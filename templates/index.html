@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CloudOps Control Center</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0b1220;
+    color: #e8eef8;
+}
+.container {
+    max-width: 1150px;
+    margin: auto;
+    padding: 30px 20px;
+}
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+h1 { margin: 0 0 8px; font-size: 27px; }
+h2 { font-size: 17px; margin: 0 0 16px; }
+.muted { color: #9aabc4; }
+.status {
+    background: #123324;
+    color: #78e2ad;
+    padding: 9px 13px;
+    border-radius: 20px;
+    font-size: 13px;
+}
+.cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+}
+.card, .panel {
+    background: #121d30;
+    border: 1px solid #26364f;
+    border-radius: 13px;
+    padding: 19px;
+}
+.label { color: #9aabc4; font-size: 13px; }
+.value { font-size: 28px; font-weight: bold; margin-top: 12px; }
+.layout {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 14px;
+    margin-top: 15px;
+}
+button, .link {
+    background: #2463eb;
+    color: white;
+    border: 0;
+    border-radius: 7px;
+    padding: 10px 13px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+.secondary { background: #26364f; }
+.delete { background: #9b3544; }
+input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    padding: 11px;
+    border: 1px solid #34445e;
+    border-radius: 7px;
+    background: #0b1220;
+    color: white;
+}
+.task-form { display: flex; gap: 8px; margin-bottom: 10px; }
+.row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 0;
+    border-bottom: 1px solid #26364a;
+}
+.row:last-child { border-bottom: 0; }
+.task-name { display: flex; align-items: center; gap: 10px; }
+.done { text-decoration: line-through; color: #8291a8; }
+.tools { display: flex; flex-wrap: wrap; gap: 9px; margin: 15px 0; }
+footer { margin-top: 20px; font-size: 12px; color: #8291a8; }
+@media (max-width: 800px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 450px) {
+    .cards { grid-template-columns: 1fr; }
+    header { align-items: flex-start; flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<main class="container">
+<header>
+    <div>
+        <h1>CloudOps Control Center</h1>
+        <div class="muted">Application operations dashboard</div>
+    </div>
+    <span class="status" id="systemStatus">Checking services...</span>
+</header>
+
+<section class="cards">
+    <div class="card">
+        <div class="label">Web service</div>
+        <div class="value" id="serviceStatus">—</div>
+    </div>
+    <div class="card">
+        <div class="label">Total tasks</div>
+        <div class="value" id="totalTasks">—</div>
+    </div>
+    <div class="card">
+        <div class="label">Completed tasks</div>
+        <div class="value" id="completedTasks">—</div>
+    </div>
+    <div class="card">
+        <div class="label">Application version</div>
+        <div class="value" style="font-size:20px" id="version">—</div>
+    </div>
+</section>
+
+<section class="layout">
+    <div class="panel">
+        <h2>Task service</h2>
+        <form id="taskForm" class="task-form">
+            <input id="taskInput" type="text" maxlength="200"
+                   placeholder="Add an operational task..." required>
+            <button type="submit">Add</button>
+        </form>
+        <div id="taskList"></div>
+    </div>
+
+    <div class="panel">
+        <h2>Monitoring and operations</h2>
+        <p class="muted">Open your monitoring tools here.</p>
+        <div class="tools">
+            <a class="link" href="/grafana/" target="_blank">Open Grafana ↗</a>
+            <a class="link secondary" href="/prometheus/" target="_blank">Open Prometheus ↗</a>
+        </div>
+        <h2 style="margin-top:25px">Service checks</h2>
+        <div class="row">
+            <span>Application API</span>
+            <strong id="apiStatus">Checking</strong>
+        </div>
+        <div class="row">
+            <span>Database</span>
+            <strong id="databaseStatus">Checking</strong>
+        </div>
+        <div class="row">
+            <span>Metrics endpoint</span>
+            <a class="link secondary" href="/metrics" target="_blank">View</a>
+        </div>
+    </div>
+</section>
+
+<section class="panel" style="margin-top:15px">
+    <h2>Current deployment</h2>
+    <div id="deploymentInfo" class="muted">Loading...</div>
+</section>
+
+<footer>
+    CloudOps demo · Dashboard data is fetched from the backend.
+    Prometheus collects metrics and Grafana visualizes them.
+</footer>
+</main>
+
+<script>
+const el = id => document.getElementById(id);
+
+async function loadDashboard() {
+    try {
+        const [healthResponse, overviewResponse, tasksResponse, deployResponse] =
+            await Promise.all([
+                fetch("/health"),
+                fetch("/api/overview"),
+                fetch("/api/tasks"),
+                fetch("/api/deployments")
+            ]);
+
+        const health = await healthResponse.json();
+        const overview = await overviewResponse.json();
+        const tasks = await tasksResponse.json();
+        const deployments = await deployResponse.json();
+
+        el("systemStatus").textContent =
+            health.status === "healthy" ? "● All systems operational" : "● Service issue";
+        el("serviceStatus").textContent =
+            health.status === "healthy" ? "Online" : "Issue";
+        el("totalTasks").textContent = overview.tasks_total;
+        el("completedTasks").textContent = overview.tasks_completed;
+        el("version").textContent = overview.version;
+        el("apiStatus").textContent =
+            overviewResponse.ok ? "Healthy" : "Error";
+        el("databaseStatus").textContent =
+            health.database === "connected" ? "Connected" : "Unavailable";
+
+        if (deployments.length) {
+            const d = deployments[0];
+            el("deploymentInfo").textContent =
+                `${d.version} · ${d.status} · ${new Date(d.timestamp).toLocaleString()}`;
+        }
+
+        const list = el("taskList");
+        list.replaceChildren();
+
+        tasks.forEach(task => {
+            const row = document.createElement("div");
+            row.className = "row";
+
+            const group = document.createElement("div");
+            group.className = "task-name";
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = task.completed;
+            checkbox.addEventListener("change", async () => {
+                await fetch(`/api/tasks/${task.id}`, {
+                    method: "PATCH",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({completed: checkbox.checked})
+                });
+                loadDashboard();
+            });
+
+            const title = document.createElement("span");
+            title.textContent = task.title;
+            if (task.completed) title.className = "done";
+
+            const remove = document.createElement("button");
+            remove.textContent = "Delete";
+            remove.className = "delete";
+            remove.addEventListener("click", async () => {
+                await fetch(`/api/tasks/${task.id}`, {method: "DELETE"});
+                loadDashboard();
+            });
+
+            group.append(checkbox, title);
+            row.append(group, remove);
+            list.append(row);
+        });
+    } catch (error) {
+        el("systemStatus").textContent = "● Dashboard connection error";
+        el("serviceStatus").textContent = "Offline";
+        console.error(error);
+    }
+}
+
+el("taskForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const input = el("taskInput");
+    const title = input.value.trim();
+    if (!title) return;
+
+    const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({title})
+    });
+
+    if (response.ok) {
+        input.value = "";
+        loadDashboard();
+    } else {
+        alert("Could not add task. Please try again.");
+    }
+});
+
+loadDashboard();
+setInterval(loadDashboard, 15000);
+</script>
+</body>
+</html>
