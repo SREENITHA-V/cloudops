@@ -1,4 +1,4 @@
-CloudOps — DevOps Web Application with Docker, CI/CD & Monitoring
+Cloud Operations-Database/API system CloudOps — DevOps Web Application with Docker, CI/CD & Monitoring
 
 CloudOps is a containerized web application deployed using Docker Compose with PostgreSQL, Nginx, Prometheus, and Grafana.
 
